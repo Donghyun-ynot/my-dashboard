@@ -167,7 +167,7 @@ export default function Dashboard() {
               <XAxis dataKey="day" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
               <Tooltip
-                formatter={(value: number) => [`${value}%`, "진행률"]}
+                formatter={(value) => [`${Number(value)}%`, "진행률"]}
               />
               <Bar dataKey="progress" fill="#6366f1" radius={[6, 6, 0, 0]} />
             </BarChart>
