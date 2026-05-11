@@ -44,8 +44,21 @@ export default function Dashboard() {
 
   // Supabase에서 데이터 불러오기
   useEffect(() => {
-    fetchTasks();
+    checkUserAndFetchTasks();
   }, []);
+
+  async function checkUserAndFetchTasks() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      window.location.href = "/login";
+      return;
+    }
+
+    fetchTasks();
+  }
 
   async function fetchTasks() {
     const { data, error } = await supabase
@@ -60,11 +73,32 @@ export default function Dashboard() {
   // 업무 추가
   async function addTask() {
     if (!newTask.name || !newTask.person) return;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      window.location.href = "/login";
+      return;
+    }
+
     const { error } = await supabase
       .from("tasks")
-      .insert([{ name: newTask.name, person: newTask.person, status: "진행중", emoji: "😊" }]);
-    if (error) console.error(error);
-    else {
+      .insert([
+        {
+          name: newTask.name,
+          person: newTask.person,
+          status: "진행중",
+          emoji: "😊",
+          user_id: user.id,
+        },
+      ]);
+
+    if (error) {
+      console.error(error);
+      alert(error.message);
+    } else {
       setNewTask({ name: "", person: "" });
       setShowAddForm(false);
       fetchTasks();
@@ -111,6 +145,16 @@ export default function Dashboard() {
               <User className="w-4 h-4 text-gray-600" />
               <span className="text-sm text-gray-600">김부장</span>
             </div>
+
+            <button
+              onClick={async () => {
+                await supabase.auth.signOut();
+                window.location.href = "/login";
+              }}
+              className="text-xs text-red-500 hover:text-red-600"
+            >
+              로그아웃
+            </button>
           </div>
         </div>
       </header>
