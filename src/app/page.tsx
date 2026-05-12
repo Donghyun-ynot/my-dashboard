@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import * as XLSX from "xlsx";
 import {
   BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip,
 } from "recharts";
@@ -105,6 +106,98 @@ export default function Dashboard() {
     }
   }
 
+  async function handleExcelUpload(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+
+    // 예외처리 1: 파일이 없을 때
+    if (!file) return;
+
+    // 예외처리 2: 엑셀 파일이 아닐 때
+    const validTypes = [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+    ];
+    if (!validTypes.includes(file.type)) {
+      alert("❌ 엑셀 파일(.xlsx, .xls)만 업로드 가능합니다!");
+      event.target.value = "";
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert("로그인이 필요합니다.");
+      return;
+    }
+
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+    // 예외처리 3: 데이터가 없을 때
+    if (jsonData.length === 0) {
+      alert("❌ 파일에 데이터가 없습니다!");
+      event.target.value = "";
+      return;
+    }
+
+    // 예외처리 4: 필수 컬럼이 없을 때
+    const firstRow = jsonData[0];
+    if (!firstRow["업무내용"] && !firstRow["담당자"]) {
+      alert("❌ 올바른 양식이 아닙니다!\n양식다운로드 버튼으로 양식을 받아서 작성해주세요.");
+      event.target.value = "";
+      return;
+    }
+
+    // 예외처리 5: 빈 행 필터링
+    const formattedData = jsonData
+      .filter((row: any) => row["업무내용"] && row["담당자"])
+      .map((row: any) => ({
+        name: String(row["업무내용"]).trim(),
+        person: String(row["담당자"]).trim(),
+        status: (row["상태"] as TaskStatus) || "진행중",
+        emoji: "😊",
+        user_id: user.id,
+      }));
+
+    // 예외처리 6: 필터링 후 데이터가 없을 때
+    if (formattedData.length === 0) {
+      alert("❌ 업로드할 유효한 데이터가 없습니다!\n업무내용과 담당자를 확인해주세요.");
+      event.target.value = "";
+      return;
+    }
+
+    const { error } = await supabase
+      .from("tasks")
+      .insert(formattedData);
+
+    if (error) {
+      console.error(error);
+      alert("❌ 업로드 실패: " + error.message);
+    } else {
+      alert(`✅ ${formattedData.length}개 업무가 업로드됐습니다!`);
+      fetchTasks();
+    }
+
+    // 같은 파일 재업로드 가능하게 초기화
+    event.target.value = "";
+  }
+
+  function downloadTemplate() {
+    const templateData = [
+      { 업무내용: "보고서 작성", 담당자: "홍길동", 상태: "진행중" },
+      { 업무내용: "미팅 준비", 담당자: "김철수", 상태: "완료" },
+      { 업무내용: "데이터 분석", 담당자: "이영희", 상태: "지연" },
+    ];
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "업무목록");
+    XLSX.writeFile(workbook, "업무양식.xlsx");
+  }
+
   // 상태 변경
   async function toggleStatus(task: Task) {
     const next: Record<TaskStatus, TaskStatus> = {
@@ -193,10 +286,33 @@ export default function Dashboard() {
             <div className="bg-white rounded-xl border p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-semibold text-gray-700">👥 팀원별 업무 현황</h2>
-                <button onClick={() => setShowAddForm(!showAddForm)}
-                  className="flex items-center gap-1 text-xs bg-indigo-500 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-600 transition">
-                  <Plus className="w-3 h-3" />추가
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <label className="text-xs bg-green-500 text-white px-3 py-1.5 rounded-lg hover:bg-green-600 transition cursor-pointer">
+                    엑셀업로드
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls"
+                      onChange={handleExcelUpload}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <button
+                    onClick={downloadTemplate}
+                    className="text-xs bg-gray-500 text-white px-3 py-1.5 rounded-lg hover:bg-gray-600 transition"
+                  >
+                    양식다운로드
+                  </button>
+
+                  <button
+                    onClick={() => setShowAddForm(!showAddForm)}
+                    className="flex items-center gap-1 text-xs bg-indigo-500 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-600 transition"
+                  >
+                    <Plus className="w-3 h-3" />
+                    추가
+                  </button>
+                </div>
               </div>
 
               {showAddForm && (
